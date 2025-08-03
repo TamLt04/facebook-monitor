@@ -1,0 +1,39 @@
+name: Facebook Monitor
+on:
+  schedule:
+    - cron: '*/1 * * * *'  # Mỗi phút
+  workflow_dispatch:  # Cho phép chạy thủ công
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 🔍 Run Facebook Monitor
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: python monitor.py
+      
+    - name: 💾 Commit state changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Bot"
+        git add last_state.json || echo "No state file yet"
+        git commit -m "🤖 Update monitor state - $(date)" || echo "No changes to commit"
+        git push || echo "No changes to push"
