@@ -47,6 +47,13 @@ jobs:
         CHAT_ID: ${{ secrets.CHAT_ID }}
       run: python monitor.py
       
+    - name: Send Status Report (manual trigger only)
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: python monitor.py status
+      
     - name: Save state for next run
       if: always()
       run: |
