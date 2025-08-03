@@ -1,39 +1,66 @@
 name: Facebook Monitor
+
 on:
   schedule:
-    - cron: '*/1 * * * *'  # Mỗi phút
-  workflow_dispatch:  # Cho phép chạy thủ công
+    # Chạy mỗi phút
+    - cron: '* * * * *'
+  workflow_dispatch: # Cho phép chạy thủ công
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: 🐍 Setup Python
+      
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.11'
         
-    - name: 📦 Install dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: 🔍 Run Facebook Monitor
+    - name: Load previous state
+      continue-on-error: true
+      run: |
+        if [ -f last_state.json ]; then
+          echo "📄 Tìm thấy state file từ lần chạy trước"
+        else
+          echo "📄 Không có state file, lần chạy đầu tiên"
+        fi
+        
+    - name: Run Facebook Monitor
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
       run: python monitor.py
       
-    - name: 💾 Commit state changes
+    - name: Save state for next run
+      if: always()
       run: |
+        # Commit state file nếu có thay đổi
         git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action Bot"
-        git add last_state.json || echo "No state file yet"
-        git commit -m "🤖 Update monitor state - $(date)" || echo "No changes to commit"
-        git push || echo "No changes to push"
+        git config --local user.name "GitHub Action"
+        
+        if [ -f last_state.json ]; then
+          git add last_state.json
+          if git diff --staged --quiet; then
+            echo "💾 Không có thay đổi state"
+          else
+            git commit -m "🤖 Update monitor state - $(date '+%Y-%m-%d %H:%M:%S')"
+            git push
+            echo "💾 Đã lưu state mới"
+          fi
+        fi
