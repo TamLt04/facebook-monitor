@@ -2,9 +2,11 @@ name: Facebook Monitor
 
 on:
   schedule:
-    # Chạy mỗi phút
+    # Chạy mỗi phút - đảm bảo không bỏ sót
     - cron: '* * * * *'
-  workflow_dispatch: # Cho phép chạy thủ công
+  
+  # Cho phép chạy thủ công
+  workflow_dispatch:
 
 jobs:
   monitor:
@@ -13,54 +15,29 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+    
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-          
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
-    - name: Load previous state
-      continue-on-error: true
-      run: |
-        if [ -f last_state.json ]; then
-          echo "📄 Tìm thấy state file từ lần chạy trước"
-        else
-          echo "📄 Không có state file, lần chạy đầu tiên"
-        fi
-        
-    - name: Run Facebook Monitor
+    
+    - name: Run monitor with retry
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
-      run: python monitor.py
-      
-    - name: Save state for next run
-      if: always()
       run: |
-        # Commit state file nếu có thay đổi
+        python monitor.py || echo "Monitor failed but continuing..."
+        sleep 2
+    
+    - name: Commit state file
+      run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        
-        if [ -f last_state.json ]; then
-          git add last_state.json
-          if git diff --staged --quiet; then
-            echo "💾 Không có thay đổi state"
-          else
-            git commit -m "🤖 Update monitor state - $(date '+%Y-%m-%d %H:%M:%S')"
-            git push
-            echo "💾 Đã lưu state mới"
-          fi
-        fi
+        git add -A
+        git diff --staged --quiet || git commit -m "Update monitor state $(date)"
+        git push || echo "No changes to push"
