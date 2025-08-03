@@ -6,8 +6,10 @@ import hashlib
 import re
 import time
 
-# Config
-FACEBOOK_URL = "https://www.facebook.com/setiawan.djordy.507"
+# Config - CHỈ CẦN THAY ĐỔI 2 DÒNG NÀY
+FACEBOOK_URL = "https://www.facebook.com/setiawan.djordy.507"  # ← Thay URL tại đây
+PERSON_NAME = "Ren Devor"  # ← Thay tên người tại đây
+
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
 
@@ -170,6 +172,70 @@ def save_state(state):
         print(f"❌ Lỗi lưu state: {e}")
         return False
 
+def should_send_heartbeat():
+    """Kiểm tra có nên gửi heartbeat không (mỗi 60 phút)"""
+    try:
+        with open('last_heartbeat.txt', 'r') as f:
+            last_heartbeat = datetime.fromisoformat(f.read().strip())
+            time_diff = datetime.now() - last_heartbeat
+            if time_diff.total_seconds() > 3600:  # 60 phút
+                with open('last_heartbeat.txt', 'w') as f:
+                    f.write(datetime.now().isoformat())
+                return True
+    except (FileNotFoundError, ValueError):
+        # Lần đầu hoặc file lỗi
+        with open('last_heartbeat.txt', 'w') as f:
+            f.write(datetime.now().isoformat())
+        return True
+    return False
+
+def send_status_report():
+    """Gửi báo cáo trạng thái chi tiết"""
+    print("📊 Đang gửi báo cáo trạng thái...")
+    
+    # Đọc trạng thái hiện tại
+    try:
+        with open('last_state.json', 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        last_check = state.get('timestamp', 'Không rõ')
+        hash_info = state.get('hash', 'N/A')[:8]
+        post_count = state.get('post_indicators', 0)
+        story_count = state.get('story_count', 0)
+    except:
+        last_check = "Chưa có dữ liệu"
+        hash_info = "N/A"
+        post_count = 0
+        story_count = 0
+    
+    # Đọc heartbeat
+    try:
+        with open('last_heartbeat.txt', 'r') as f:
+            last_heartbeat = f.read().strip()
+    except:
+        last_heartbeat = "Chưa có"
+    
+    message = f"""
+🔍 <b>BÁO CÁO TRẠNG THÁI BOT</b>
+
+⏰ Kiểm tra lúc: {datetime.now().strftime('%H:%M:%S %d/%m/%Y')}
+📊 Lần check cuối: {last_check}
+💚 Heartbeat cuối: {last_heartbeat}
+
+📈 Thống kê:
+- Hash hiện tại: {hash_info}...
+- Post indicators: {post_count}
+- Story count: {story_count}
+
+✅ <b>Bot đang hoạt động bình thường!</b>
+📱 Theo dõi: {PERSON_NAME}
+🔔 Sẵn sàng thông báo bài viết mới
+"""
+    
+    if send_telegram_message(message):
+        print("✅ Đã gửi báo cáo trạng thái")
+    else:
+        print("❌ Không gửi được báo cáo")
+
 def has_significant_change(current_state, last_state):
     """
     Kiểm tra xem có thay đổi đáng kể không
@@ -196,6 +262,12 @@ def has_significant_change(current_state, last_state):
 
 def main():
     print(f"\n🕐 === BẮT ĐẦU KIỂM TRA LÚC {datetime.now().strftime('%H:%M:%S %d/%m/%Y')} ===")
+    
+    # Xử lý tham số dòng lệnh để kiểm tra trạng thái
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'status':
+        send_status_report()
+        return
     
     # Kiểm tra cấu hình
     if not BOT_TOKEN or not CHAT_ID:
@@ -225,7 +297,7 @@ def main():
         print("🚀 Lần đầu chạy, lưu trạng thái hiện tại")
         if save_state(current_state):
             # Gửi thông báo khởi động đơn giản
-            startup_message = "🤖 Bot Facebook Monitor đã khởi động và sẵn sàng theo dõi bài viết mới từ Ren Devor!"
+            startup_message = f"🤖 Bot Facebook Monitor đã khởi động và sẵn sàng theo dõi bài viết mới từ {PERSON_NAME}!"
             send_telegram_message(startup_message)
         return
     
@@ -234,7 +306,7 @@ def main():
         print("🆕 PHÁT HIỆN THAY ĐỔI ĐÁNG KỂ!")
         
         # Thông báo đơn giản theo yêu cầu
-        message = "📱 Có bài viết mới từ Ren Devor!"
+        message = f"📱 Có bài viết mới từ {PERSON_NAME}!"
         
         # Gửi thông báo và chỉ lưu state nếu gửi thành công
         if send_telegram_message(message):
@@ -249,6 +321,11 @@ def main():
         # Vẫn cập nhật timestamp để track
         current_state['last_check'] = datetime.now().isoformat()
         save_state(current_state)
+        
+        # Gửi heartbeat mỗi 60 phút để biết bot còn sống
+        if should_send_heartbeat():
+            heartbeat_msg = f"💚 Bot đang hoạt động - {datetime.now().strftime('%H:%M %d/%m')}"
+            send_telegram_message(heartbeat_msg)
     
     print(f"🏁 === KẾT THÚC KIỂM TRA ===\n")
 
